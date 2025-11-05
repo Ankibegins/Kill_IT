@@ -1,0 +1,13 @@
+{
+    "user_id": "U1001",
+    "name": "Ankit",
+    "email": "ankit@example.com",
+    "password_hash": "hashed_password_here",
+    "role": "student",
+    "total_points": 0,
+    "streak_days": 0,
+    "group_id": "G1001",
+    "tasks": ["T100", "T101"],
+    "joined_on": "2025-11-02T09:00:00"
+  }
+  

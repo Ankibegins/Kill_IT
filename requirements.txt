@@ -1,0 +1,9 @@
+fastapi==0.120.4
+uvicorn[standard]==0.38.0
+motor==3.6.0
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+pydantic[email]==2.12.3
+python-multipart==0.0.20
+python-decouple==3.8
+
