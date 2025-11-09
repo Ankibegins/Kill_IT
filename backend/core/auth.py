@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from bson import ObjectId
+import hashlib
 
 from decouple import config
 
@@ -17,16 +18,38 @@ SECRET_KEY = config("SECRET_KEY", default="your-secret-key-change-in-production-
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        password_bytes = plain_password.encode('utf-8')
+        # Bcrypt has a 72-byte limit, so for longer passwords, hash with SHA-256 first
+        if len(password_bytes) > 72:
+            # Pre-hash with SHA-256 (32 bytes) to stay within bcrypt's limit
+            password_to_check = hashlib.sha256(password_bytes).digest()
+        else:
+            password_to_check = password_bytes
+        
+        # Verify the password
+        return bcrypt.checkpw(password_to_check, hashed_password.encode('utf-8'))
+    except Exception:
+        return False
 
 def get_password_hash(password: str) -> str:
-    """Hash a password"""
-    return pwd_context.hash(password)
+    """Hash a password (handles passwords longer than 72 bytes by pre-hashing with SHA-256)"""
+    password_bytes = password.encode('utf-8')
+    # Bcrypt has a 72-byte limit, so for longer passwords, hash with SHA-256 first
+    if len(password_bytes) > 72:
+        # Pre-hash with SHA-256 (32 bytes) to stay within bcrypt's limit
+        password_to_hash = hashlib.sha256(password_bytes).digest()
+    else:
+        password_to_hash = password_bytes
+    
+    # Generate salt and hash
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_to_hash, salt)
+    return hashed.decode('utf-8')
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """Create a JWT access token"""

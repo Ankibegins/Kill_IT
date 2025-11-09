@@ -6,7 +6,7 @@ from typing import List, Optional
 from bson import ObjectId
 
 from core.database import get_collection
-from schemas.task_schema import TaskOut
+from schemas.task_schema import TaskOut, TaskStatus
 
 async def get_sorted_tasks_from_db(
     user_id: str,
@@ -29,7 +29,12 @@ async def get_sorted_tasks_from_db(
     # Build query
     query = {"user_id": user_id}
     if completed_only is not None:
-        query["is_completed"] = completed_only
+        if completed_only:
+            # Filter for completed tasks only
+            query["status"] = TaskStatus.COMPLETED.value
+        else:
+            # Filter for non-completed tasks (pending, in_progress, skipped)
+            query["status"] = {"$ne": TaskStatus.COMPLETED.value}
     if category:
         query["category"] = category
     
@@ -56,7 +61,28 @@ async def get_priority_queue(user_id: str) -> List[TaskOut]:
         user_id: User ID to filter tasks
     
     Returns:
-        List of incomplete TaskOut objects sorted by priority
+        List of incomplete TaskOut objects sorted by priority (pending and in_progress only)
     """
-    return await get_sorted_tasks_from_db(user_id, completed_only=False)
+    tasks_collection = get_collection("tasks")
+    
+    # Build query for pending and in_progress tasks only
+    query = {
+        "user_id": user_id,
+        "status": {"$in": [TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]}
+    }
+    
+    # Fetch tasks and sort by priority (ascending - lower number = higher priority)
+    # Secondary sort by created_at for consistent ordering
+    cursor = tasks_collection.find(query).sort([
+        ("priority", 1),  # Primary sort: priority ascending
+        ("created_at", 1)  # Secondary sort: created_at ascending
+    ])
+    
+    tasks = []
+    async for task_doc in cursor:
+        task_doc["id"] = str(task_doc["_id"])
+        del task_doc["_id"]
+        tasks.append(TaskOut(**task_doc))
+    
+    return tasks
 

@@ -10,6 +10,7 @@ from services.task_service import (
     create_task,
     update_task,
     complete_task,
+    skip_task,
     delete_task,
     upload_task_proof
 )
@@ -99,6 +100,14 @@ async def complete_task_endpoint(
 ):
     """Mark a task as completed (only if it belongs to the current user)"""
     return await complete_task(task_id=task_id, user_id=current_user.id)
+
+@router.post("/{task_id}/skip", response_model=TaskOut)
+async def skip_task_endpoint(
+    task_id: str,
+    current_user: UserOut = Depends(get_current_user)
+):
+    """Mark a task as skipped (only if it belongs to the current user)"""
+    return await skip_task(task_id=task_id, user_id=current_user.id)
 
 @router.delete("/{task_id}", status_code=204)
 async def delete_task_endpoint(

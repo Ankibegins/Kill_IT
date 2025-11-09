@@ -7,6 +7,7 @@ from typing import Optional
 from bson import ObjectId
 
 from core.database import get_collection
+from schemas.task_schema import TaskStatus
 
 def calculate_next_reset(category: str, current_time: Optional[datetime] = None) -> datetime:
     """
@@ -66,14 +67,14 @@ async def reset_tasks_for_category(category: str):
     tasks_collection = get_collection("tasks")
     current_time = datetime.utcnow()
     
-    # Find tasks that need reset
+    # Find tasks that need reset (only completed tasks get reset)
     query = {
         "category": category,
         "next_reset": {"$lte": current_time},
-        "is_completed": True
+        "status": TaskStatus.COMPLETED.value
     }
     
-    # Reset tasks: set is_completed to False and update next_reset
+    # Reset tasks: set status to pending and update next_reset
     tasks_to_reset = []
     async for task in tasks_collection.find(query):
         next_reset = calculate_next_reset(category, current_time)
@@ -82,7 +83,7 @@ async def reset_tasks_for_category(category: str):
             {"_id": task["_id"]},
             {
                 "$set": {
-                    "is_completed": False,
+                    "status": TaskStatus.PENDING.value,
                     "next_reset": next_reset,
                     "updated_at": current_time
                 }

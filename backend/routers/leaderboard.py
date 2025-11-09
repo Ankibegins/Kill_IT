@@ -20,6 +20,16 @@ class LeaderboardResponse(BaseModel):
     group_name: str
     rankings: List[LeaderboardEntry]
 
+class UserRankResponse(BaseModel):
+    user: LeaderboardEntry
+    rank: int
+    total_users: int
+
+class GroupBoardEntry(BaseModel):
+    group_id: str
+    group_name: str
+    total_points: int
+
 @router.get("/{group_id}", response_model=LeaderboardResponse)
 async def get_leaderboard(
     group_id: str,
@@ -96,4 +106,99 @@ async def get_all_time_leaderboard(
         ))
     
     return rankings
+
+@router.get("/global", response_model=List[LeaderboardEntry])
+async def get_global_leaderboard(
+    current_user: UserOut = Depends(get_current_user),
+    limit: int = 100
+):
+    """
+    Global leaderboard sorted by total_points in descending order (alias of all-time)
+    """
+    users_collection = get_collection("users")
+
+    cursor = users_collection.find().sort("total_points", -1).limit(limit)
+
+    rankings = []
+    async for user_doc in cursor:
+        rankings.append(LeaderboardEntry(
+            user_id=str(user_doc["_id"]),
+            username=user_doc.get("username", ""),
+            email=user_doc.get("email", ""),
+            total_points=user_doc.get("total_points", 0)
+        ))
+
+    return rankings
+
+@router.get("/groups", response_model=List[GroupBoardEntry])
+async def get_groups_leaderboard(
+    current_user: UserOut = Depends(get_current_user)
+):
+    """
+    Returns all groups ranked by the total points of their members (descending).
+    """
+    groups_collection = get_collection("groups")
+    users_collection = get_collection("users")
+
+    entries: List[GroupBoardEntry] = []
+
+    cursor = groups_collection.find()
+    async for group in cursor:
+        group_id = str(group["_id"])
+        members = group.get("members", [])
+        total_points = 0
+        if members:
+            member_object_ids = [ObjectId(m) for m in members]
+            users_cursor = users_collection.find({"_id": {"$in": member_object_ids}})
+            async for u in users_cursor:
+                total_points += int(u.get("total_points", 0))
+
+        entries.append(GroupBoardEntry(
+            group_id=group_id,
+            group_name=group.get("group_name", ""),
+            total_points=total_points
+        ))
+
+    # Sort descending by total_points
+    entries.sort(key=lambda e: e.total_points, reverse=True)
+    return entries
+
+@router.get("/user/{user_id}", response_model=UserRankResponse)
+async def get_user_rank(
+    user_id: str,
+    current_user: UserOut = Depends(get_current_user)
+):
+    """
+    Get a specific user's rank and stats in the global leaderboard.
+    Uses dense ranking: users with the same total_points share the same rank.
+    """
+    users_collection = get_collection("users")
+
+    # Self-only access for now (extendable to admin)
+    if user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view your own leaderboard rank"
+        )
+
+    # Fetch user
+    user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+    if not user_doc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user_points = user_doc.get("total_points", 0)
+
+    # Rank = count of users with strictly higher points + 1 (dense ranking)
+    higher_count = await users_collection.count_documents({"total_points": {"$gt": user_points}})
+    total_users = await users_collection.count_documents({})
+    rank = higher_count + 1
+
+    user_entry = LeaderboardEntry(
+        user_id=str(user_doc["_id"]),
+        username=user_doc.get("username", ""),
+        email=user_doc.get("email", ""),
+        total_points=user_points
+    )
+
+    return UserRankResponse(user=user_entry, rank=rank, total_users=total_users)
 

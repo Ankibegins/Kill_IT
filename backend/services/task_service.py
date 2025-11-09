@@ -9,7 +9,7 @@ from fastapi import HTTPException, status
 
 from core.database import get_collection
 from core.task_reset import calculate_next_reset
-from schemas.task_schema import TaskOut
+from schemas.task_schema import TaskOut, TaskStatus
 
 VALID_CATEGORIES = ["daily", "weekly", "weekend", "monthly"]
 
@@ -57,7 +57,7 @@ async def create_task(
         "priority": priority,
         "value": value,
         "user_id": user_id,
-        "is_completed": False,
+        "status": TaskStatus.PENDING.value,
         "created_at": current_time,
         "updated_at": current_time,
         "next_reset": next_reset,
@@ -170,13 +170,29 @@ async def complete_task(task_id: str, user_id: str) -> TaskOut:
         )
     
     tasks_collection = get_collection("tasks")
+    task_logs_collection = get_collection("task_logs")
     current_time = datetime.utcnow()
+    
+    # Get task category before update
+    task_category = task.get("category", "daily")
     
     # Mark as completed and update timestamp
     await tasks_collection.update_one(
         {"_id": ObjectId(task_id)},
-        {"$set": {"is_completed": True, "updated_at": current_time}}
+        {"$set": {"status": TaskStatus.COMPLETED.value, "updated_at": current_time}}
     )
+    
+    # --- NEW LOGGING LOGIC ---
+    # Create a log entry for this completion
+    log_entry = {
+        "user_id": user_id,
+        "task_id": task_id,
+        "status": TaskStatus.COMPLETED.value,
+        "category": task_category,
+        "timestamp": current_time
+    }
+    await task_logs_collection.insert_one(log_entry)
+    # --- END NEW LOGGING LOGIC ---
     
     # --- GAMIFICATION LOGIC ---
     from services.points_manager import update_points_for_task
@@ -184,7 +200,6 @@ async def complete_task(task_id: str, user_id: str) -> TaskOut:
     
     # Get task value (default to 10 if not set)
     task_value = task.get("value", 10)
-    task_category = task.get("category", "daily")
     has_proof = bool(task.get("proof_url"))
     
     # 1. Update points based on the task
@@ -199,6 +214,70 @@ async def complete_task(task_id: str, user_id: str) -> TaskOut:
     # 2. Update the user's daily streak
     await update_user_streak(user_id=user_id)
     # --- END GAMIFICATION LOGIC ---
+    
+    # Return updated task
+    updated_task = await tasks_collection.find_one({"_id": ObjectId(task_id)})
+    updated_task["id"] = str(updated_task["_id"])
+    del updated_task["_id"]
+    
+    return TaskOut(**updated_task)
+
+async def skip_task(task_id: str, user_id: str) -> TaskOut:
+    """
+    Mark a task as skipped and log it
+    
+    Args:
+        task_id: Task ID
+        user_id: User ID for verification
+    
+    Returns:
+        Updated TaskOut object
+    """
+    # Verify task exists and belongs to user
+    task = await get_task_by_id(task_id, user_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found or access denied"
+        )
+    
+    tasks_collection = get_collection("tasks")
+    task_logs_collection = get_collection("task_logs")
+    current_time = datetime.utcnow()
+    
+    # Get task category before update
+    task_category = task.get("category", "daily")
+    
+    # Mark as skipped and update timestamp
+    await tasks_collection.update_one(
+        {"_id": ObjectId(task_id)},
+        {"$set": {"status": TaskStatus.SKIPPED.value, "updated_at": current_time}}
+    )
+    
+    # --- LOGGING LOGIC ---
+    # Create a log entry for this skip
+    log_entry = {
+        "user_id": user_id,
+        "task_id": task_id,
+        "status": TaskStatus.SKIPPED.value,
+        "category": task_category,
+        "timestamp": current_time
+    }
+    await task_logs_collection.insert_one(log_entry)
+    # --- END LOGGING LOGIC ---
+    
+    # Optional: Apply penalty for skipping (from points_manager)
+    from services.points_manager import update_points_for_task
+    task_value = task.get("value", 10)
+    
+    # Apply penalty by marking as not completed
+    await update_points_for_task(
+        user_id=user_id,
+        task_value=task_value,
+        task_category=task_category,
+        has_proof=False,
+        completed=False  # This will apply penalty
+    )
     
     # Return updated task
     updated_task = await tasks_collection.find_one({"_id": ObjectId(task_id)})

@@ -10,6 +10,7 @@ class UserCreate(UserBase):
     password: str
 
 class UserInDB(UserBase):
+    id: str = Field(..., alias="id")
     hashed_password: str = Field(..., alias="hashed_password")
     total_points: int = 0
     current_streak: int = 0

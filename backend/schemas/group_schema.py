@@ -3,7 +3,7 @@ from typing import List
 
 class GroupBase(BaseModel):
     group_name: str
-    pool_amount: int
+    pool_amount: int = Field(default=1, ge=1, le=10, description="Min 1, Max 10")
 
 class GroupCreate(GroupBase):
     pass

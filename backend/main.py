@@ -7,7 +7,7 @@ import asyncio
 
 from core.database import Database
 from core.scheduler import run_task_reset_scheduler
-from routers import auth, tasks, groups, leaderboard, ai_assistant
+from routers import auth, tasks, groups, leaderboard, ai_assistant, analytics
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -46,6 +46,7 @@ app.include_router(tasks.router)
 app.include_router(groups.router)
 app.include_router(leaderboard.router)
 app.include_router(ai_assistant.router)
+app.include_router(analytics.router)
 
 @app.get("/")
 async def root():

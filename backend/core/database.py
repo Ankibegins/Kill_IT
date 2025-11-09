@@ -1,6 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from decouple import config
-import os
+from certifi import where
 
 MONGODB_URL = config("MONGODB_URL", default="mongodb://localhost:27017")
 DATABASE_NAME = config("DATABASE_NAME", default="ankiplan")
@@ -11,7 +11,11 @@ class Database:
     @classmethod
     async def connect(cls):
         """Connect to MongoDB"""
-        cls.client = AsyncIOMotorClient(MONGODB_URL)
+        # Use TLS CA bundle for Atlas (mongodb+srv) connections, keep local unchanged
+        if MONGODB_URL.startswith("mongodb+srv://"):
+            cls.client = AsyncIOMotorClient(MONGODB_URL, tlsCAFile=where())
+        else:
+            cls.client = AsyncIOMotorClient(MONGODB_URL)
         print(f"✅ Connected to MongoDB: {DATABASE_NAME}")
     
     @classmethod
