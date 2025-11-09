@@ -82,13 +82,58 @@ async def join_group(
     
     return GroupOut(**updated_group)
 
-@router.get("/{group_id}", response_model=GroupOut)
+@router.post("/leave", response_model=dict)
+async def leave_group(
+    current_user: UserOut = Depends(get_current_user)
+):
+    """Leave the current user's group"""
+    groups_collection = get_collection("groups")
+    users_collection = get_collection("users")
+    
+    # Check if user is in any group
+    user_doc = await users_collection.find_one({"_id": ObjectId(current_user.id)})
+    if not user_doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    user_group_ids = user_doc.get("group_ids", [])
+    if not user_group_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not in any group"
+        )
+    
+    # Remove user from all their groups
+    for group_id in user_group_ids:
+        # Remove user from group members
+        await groups_collection.update_one(
+            {"_id": ObjectId(group_id)},
+            {"$pull": {"members": current_user.id}}
+        )
+        
+        # Check if group is now empty and delete it
+        group = await groups_collection.find_one({"_id": ObjectId(group_id)})
+        if group and (not group.get("members") or len(group.get("members", [])) == 0):
+            await groups_collection.delete_one({"_id": ObjectId(group_id)})
+    
+    # Remove all group_ids from user
+    await users_collection.update_one(
+        {"_id": ObjectId(current_user.id)},
+        {"$set": {"group_ids": []}}
+    )
+    
+    return {"message": "Left group successfully"}
+
+@router.get("/{group_id}", response_model=dict)
 async def get_group(
     group_id: str,
     current_user: UserOut = Depends(get_current_user)
 ):
-    """Get group details by ID"""
+    """Get group details by ID with member information"""
     groups_collection = get_collection("groups")
+    users_collection = get_collection("users")
     
     group = await groups_collection.find_one({"_id": ObjectId(group_id)})
     if not group:
@@ -97,8 +142,34 @@ async def get_group(
             detail="Group not found"
         )
     
-    group["id"] = str(group["_id"])
-    del group["_id"]
+    # Get member details
+    members = group.get("members", [])
+    members_info = []
     
-    return GroupOut(**group)
+    if members:
+        member_object_ids = [ObjectId(member_id) for member_id in members]
+        cursor = users_collection.find({"_id": {"$in": member_object_ids}})
+        async for user_doc in cursor:
+            members_info.append({
+                "user_id": str(user_doc["_id"]),
+                "username": user_doc.get("username", ""),
+                "email": user_doc.get("email", ""),
+                "total_points": user_doc.get("total_points", 0)
+            })
+        
+        # Sort by total_points descending
+        members_info.sort(key=lambda x: x["total_points"], reverse=True)
+    
+    # Prepare response
+    group_data = {
+        "id": str(group["_id"]),
+        "group_name": group.get("group_name", ""),
+        "pool_amount": group.get("pool_amount", 1),
+        "admin_id": group.get("admin_id", ""),
+        "members": group.get("members", []),
+        "monthly_goal": group.get("monthly_goal", ""),
+        "members_info": members_info
+    }
+    
+    return {"group": group_data}
 

@@ -1,10 +1,8 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Dashboard from './pages/Dashboard';
-import Tasks from './pages/Tasks';
-import Leaderboard from './pages/Leaderboard';
-import AiCoach from './pages/AiCoach';
+import MyGroup from './pages/MyGroup';
+import Groups from './pages/Groups';
 import Login from './pages/Login';
 
 // Protected route wrapper
@@ -17,49 +15,33 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
-      <main className="container mx-auto px-4 py-8">
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/tasks"
-            element={
-              <ProtectedRoute>
-                <Tasks />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/leaderboard"
-            element={
-              <ProtectedRoute>
-                <Leaderboard />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/ai-coach"
-            element={
-              <ProtectedRoute>
-                <AiCoach />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </main>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/my-group"
+          element={
+            <ProtectedRoute>
+              <MyGroup />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/groups"
+          element={
+            <ProtectedRoute>
+              <Groups />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/" element={<Navigate to="/my-group" replace />} />
+        {/* Redirect old routes to new ones */}
+        <Route path="/dashboard" element={<Navigate to="/my-group" replace />} />
+        <Route path="/tasks" element={<Navigate to="/my-group" replace />} />
+        <Route path="/leaderboard" element={<Navigate to="/my-group" replace />} />
+        <Route path="/ai-coach" element={<Navigate to="/my-group" replace />} />
+      </Routes>
     </div>
   );
 }
 
 export default App;
-
-
-
